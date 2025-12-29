@@ -1,5 +1,33 @@
+# macOS
 .DS_Store
+
+# Environment
 .env
+.env.local
+
+# Node
 node_modules/
 dist/
 build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+venv/
+env/
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+scriptbuddy.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
