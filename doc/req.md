@@ -103,7 +103,7 @@
 
 ### 豆包流式语音识别模型2.0
 语音转文字
-https://console.volcengine.com/speech/service/10038?AppID=<YOUR_APP_ID>
+ https://www.volcengine.com/docs/6561/1354869?lang=zh 
 appid V2L_APPID
 
 AccessToken .env V2L_ACCESS_TOKEN
@@ -115,7 +115,7 @@ sdk方式 https://www.volcengine.com/docs/6561/1354869?lang=zh
 
 ### 语音合成大模型
 
-https://console.volcengine.com/speech/service/10007?AppID=<YOUR_APP_ID>
+ https://www.volcengine.com/docs/6561/1257584
 
 appid L2V_APPID
 
