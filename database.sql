@@ -23,7 +23,8 @@ INSERT INTO script_configs (category, key_name, value) VALUES
 ('tts', 'appId', '5349866810'),
 ('tts', 'token', 'j_DA2hGKCvrytiS1fM-1jN5Cqz6Mxpx3'),
 ('tts', 'secret', '1oJHD2KkFJTMbLgPIx4fAR9XS7qGZNM7'),
-('tts', 'cluster', 'volc_tts_streaming'),
+('tts', 'cluster', 'volcano_tts'),
+('tts', 'voiceType', 'zh_male_linjiananhai_moon_bigtts'),
 
 ('llm', 'apiKey', 'sk-903a962786f34773a1680f6fb6fad64d'),
 ('llm', 'baseUrl', 'https://api.deepseek.com');
