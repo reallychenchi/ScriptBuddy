@@ -187,24 +187,24 @@ async def asr_websocket_endpoint(client_ws: WebSocket):
     logger.info(f"  - appKey: {app_key}")
     logger.info(f"  - accessKey: {access_key}")
     logger.info(f"  - cluster: {cluster}")
-    logger.info(f"  - Using V2 API with ACCESS_TOKEN")
+    logger.info(f"  - Using V3 API (bigmodel)")
 
     if not (app_key and access_key):
         logger.error("🎤 [ASR Proxy] ❌ Server config missing!")
         await client_ws.close(code=1008, reason="Server Config Missing")
         return
 
-    # 2. Build Headers (using X-Api-* format as per sample code)
+    # 2. Build Headers (matching official demo: sauc_websocket_demo.py)
     reqid = str(uuid.uuid4())
     extra_headers = {
         "X-Api-Resource-Id": "volc.bigasr.sauc.duration",
         "X-Api-Request-Id": reqid,
-        "X-Api-Access-Key": access_key,    # Trying SECRET_KEY
-        "X-Api-App-Key": app_key           # V2L_APPID
+        "X-Api-Access-Key": access_key,
+        "X-Api-App-Key": app_key
     }
 
-    # Use V2 API endpoint (V3 requires higher tier account)
-    volc_url = "wss://openspeech.bytedance.com/api/v2/asr"
+    # Use V3 API endpoint (same as official demo)
+    volc_url = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel"
     logger.info(f"🎤 [ASR Proxy] Connecting to VolcEngine: {volc_url}")
     logger.info(f"🎤 [ASR Proxy] Headers: {extra_headers}")
 
