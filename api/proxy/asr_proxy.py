@@ -187,29 +187,29 @@ async def asr_websocket_endpoint(client_ws: WebSocket):
     logger.info(f"  - appKey: {app_key}")
     logger.info(f"  - accessKey: {access_key}")
     logger.info(f"  - cluster: {cluster}")
-    logger.info(f"  - Using V2 API with ACCESS_TOKEN")
+    logger.info(f"  - Using V3 API (bigmodel)")
 
     if not (app_key and access_key):
         logger.error("🎤 [ASR Proxy] ❌ Server config missing!")
         await client_ws.close(code=1008, reason="Server Config Missing")
         return
 
-    # 2. Build Headers (using X-Api-* format as per sample code)
+    # 2. Build Headers (matching official demo: sauc_websocket_demo.py)
     reqid = str(uuid.uuid4())
     extra_headers = {
         "X-Api-Resource-Id": "volc.bigasr.sauc.duration",
         "X-Api-Request-Id": reqid,
-        "X-Api-Access-Key": access_key,    # Trying SECRET_KEY
-        "X-Api-App-Key": app_key           # V2L_APPID
+        "X-Api-Access-Key": access_key,
+        "X-Api-App-Key": app_key
     }
 
-    # Use V2 API endpoint (V3 requires higher tier account)
-    volc_url = "wss://openspeech.bytedance.com/api/v2/asr"
+    # Use V3 API endpoint (same as official demo)
+    volc_url = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel"
     logger.info(f"🎤 [ASR Proxy] Connecting to VolcEngine: {volc_url}")
     logger.info(f"🎤 [ASR Proxy] Headers: {extra_headers}")
 
     try:
-        async with websockets.connect(volc_url, extra_headers=extra_headers, max_size=10*1024*1024) as volc_ws:
+        async with websockets.connect(volc_url, additional_headers=extra_headers, max_size=10*1024*1024) as volc_ws:
             logger.info("🎤 [ASR Proxy] ✓ Connected to VolcEngine")
             
             client_to_volc_count = 0
@@ -273,21 +273,85 @@ async def asr_websocket_endpoint(client_ws: WebSocket):
                     async for message in volc_ws:
                         volc_to_client_count += 1
                         msg_len = len(message) if isinstance(message, bytes) else len(message.encode())
-                        logger.info(f"🎤 [ASR Proxy] Volc → Client #{volc_to_client_count}: {msg_len} bytes")
-                        
-                        # Try to decode and log the response for debugging
+
+                        # Try to decode and log the response
                         try:
                             if isinstance(message, bytes) and len(message) > 8:
                                 header = message[0:4]
                                 msg_type = (header[1] >> 4) & 0x0F
+                                flags = header[1] & 0x0F
+                                serialization = (header[2] >> 4) & 0x0F
+                                compression = header[2] & 0x0F
+
+                                logger.debug(f"🎤 [ASR] Response header: type={msg_type}, flags={flags}, ser={serialization}, comp={compression}, raw={header.hex()}")
+
                                 if msg_type == MsgType.FullServerResponse:
                                     payload_size = struct.unpack(">I", message[4:8])[0]
                                     if payload_size > 0 and len(message) >= 8 + payload_size:
-                                        payload_str = message[8:8+payload_size].decode('utf-8', errors='ignore')
-                                        logger.debug(f"🎤 [ASR Proxy] Response: {payload_str[:300]}...")
+                                        payload_bytes = message[8:8+payload_size]
+
+                                        # Decompress if gzipped
+                                        if compression == CompressionType.Gzip:
+                                            try:
+                                                payload_bytes = gzip.decompress(payload_bytes)
+                                            except:
+                                                pass
+
+                                        payload_str = payload_bytes.decode('utf-8', errors='ignore')
+
+                                        # Parse JSON and extract recognition result
+                                        try:
+                                            resp_json = json.loads(payload_str)
+                                            result = resp_json.get("result", {})
+                                            text = result.get("text", "")
+                                            is_final = result.get("utterance_end", False)
+
+                                            if text:
+                                                if is_final:
+                                                    logger.info(f"🎤 [ASR] ✅ Final: \"{text}\"")
+                                                else:
+                                                    logger.debug(f"🎤 [ASR] Partial: \"{text}\"")
+                                            else:
+                                                logger.debug(f"🎤 [ASR Proxy] Volc → Client #{volc_to_client_count}: {msg_len} bytes")
+                                        except json.JSONDecodeError:
+                                            logger.debug(f"🎤 [ASR Proxy] Response: {payload_str[:200]}...")
+                                elif msg_type == MsgType.Error:
+                                    # Parse error response (format: header + [seq] + error_code + payload_size + payload)
+                                    try:
+                                        cursor = 4  # after header
+                                        # Check if sequence is present (flags & 0x01)
+                                        if flags & 0x01:
+                                            cursor += 4  # skip sequence
+
+                                        error_code = struct.unpack(">i", message[cursor:cursor+4])[0]
+                                        cursor += 4
+                                        error_payload_size = struct.unpack(">I", message[cursor:cursor+4])[0]
+                                        cursor += 4
+
+                                        if error_payload_size > 0 and len(message) >= cursor + error_payload_size:
+                                            error_bytes = message[cursor:cursor+error_payload_size]
+                                            if compression == CompressionType.Gzip:
+                                                try:
+                                                    error_bytes = gzip.decompress(error_bytes)
+                                                except:
+                                                    pass
+                                            error_str = error_bytes.decode('utf-8', errors='ignore')
+                                            # Try to parse as JSON for better formatting
+                                            try:
+                                                error_json = json.loads(error_str)
+                                                error_msg = error_json.get("message", error_str)
+                                                logger.error(f"🎤 [ASR Proxy] ❌ Error {error_code}: {error_msg}")
+                                            except:
+                                                logger.error(f"🎤 [ASR Proxy] ❌ Error {error_code}: {error_str}")
+                                        else:
+                                            logger.error(f"🎤 [ASR Proxy] ❌ Error code: {error_code}")
+                                    except Exception as err_parse:
+                                        logger.error(f"🎤 [ASR Proxy] ❌ Error response: {msg_len} bytes (parse failed: {err_parse})")
+                                else:
+                                    logger.debug(f"🎤 [ASR Proxy] Volc → Client #{volc_to_client_count}: {msg_len} bytes (type={msg_type})")
                         except Exception as parse_err:
-                            pass
-                        
+                            logger.debug(f"🎤 [ASR Proxy] Volc → Client #{volc_to_client_count}: {msg_len} bytes")
+
                         await client_ws.send_bytes(message)
                 except Exception as e:
                     logger.error(f"🎤 [ASR Proxy] ❌ Volc→Client Error: {e}")

@@ -128,7 +128,7 @@ export class VolcEngineAsrClient {
         const payload = {
             user: { uid: "browser_user" },
             audio: {
-                format: "wav",
+                format: "pcm",  // Use "pcm" for raw PCM data (no WAV headers)
                 codec: "raw",
                 rate: 16000,
                 bits: 16,
